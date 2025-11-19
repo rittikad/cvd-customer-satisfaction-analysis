@@ -146,13 +146,11 @@ This project combines **public health** and **retail analytics** to deliver **da
 - **Reporting:** Communicating complex results to technical and non-technical stakeholders  
 
 ---
+## ⚡ Quick Access
 
-## 📁 Repository Contents
-- `Code` – Statistical Modelling + interaction analysis for both analyses  
-- `HTML_Report` – Full rendered report with visualizations  
-- `Data/` – Raw data for both analyses  
-- `README.md` – Project documentation  
-
+- **[`Code/`](https://github.com/rittikad/cvd-customer-satisfaction-analysis/blob/main/Code/5594410.Rmd)** – R scripts for CVD and Retail Customer Satisfaction analyses, including regression & interaction modelling  
+- **[`HTML_Report/`](https://github.com/rittikad/cvd-customer-satisfaction-analysis/tree/main/HTML_Report)** – Fully rendered report with all visualizations and statistical summaries  
+- **[`Data/`](https://github.com/rittikad/cvd-customer-satisfaction-analysis/tree/main/Data)** – Raw datasets for both analyses  
 ---
 
 **💡 Outcome:**  
