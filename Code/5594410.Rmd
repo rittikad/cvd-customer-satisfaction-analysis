@@ -1,0 +1,1333 @@
+---
+title: "Business Statistics Mid-Term Assessment IB94X0 2024-2025 #2"
+author: "5594410"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+editor_options: 
+  chunk_output_type: console
+---
+
+## Certification Of Original Work
+
+---
+
+This is to certify that the work I am submitting is my own. I am aware of the University of Warwick regulation concerning plagiarism and collusion. 
+
+No substantial part(s) of the work  submitted  here has also been submitted by me  in other assessments for accredited courses of study, and I acknowledge that if this has been done an appropriate reduction in the mark I might otherwise have received will be made.
+
+AI was used in the preparation of this work. It was used in the development of the code: It was used to provide example uses of functions or approaches to elements of the challenges which were then interpreted by me and modified to be applicable to this data/report.
+
+---
+
+## Question 1 - Cardio Vascular Disease In England
+
+---
+
+### *Project Overview*
+
+---
+
+This report aims to identify which factors—overweight, smoking, wellbeing, and poverty impact the prevalence of cardiovascular disease (CVD) in an area, by performing the below specific analyses:
+
+1. Provide a data integrity check of the dataset.
+2. Provide a data quality check of the dataset.
+3. Perform correlation of the dependent variable (`cvd`) with each independent variable (`poverty`, `smokers`, `wellbeing`, and `overweight`).
+4. Perform linear regression of the dependent variable (`cvd`) with each independent variable (`poverty`, `smokers`, `wellbeing`, and `overweight`) and plot the results.
+5. Perform multiple linear regression for all independent variables (`poverty`, `smokers`, `wellbeing`, `overweight`) against the dependent variable (`cvd`).
+6. Perform NHST (Null Hypothesis Significance Testing) for the regression coefficients of the multiple linear regression model.
+7. Perform the estimation approach for the multiple regression model.
+8. Calculate the Variance Inflation Factor (VIF) to check for multicollinearity.
+9. Perform EMEANS analysis to assess the adjusted means of CVD prevalence across different levels of each independent variable.
+10. Plot the effect of poverty on cardiovascular disease (`cvd`).
+
+---
+
+### *Data Dictionary*
+
+This dataset comprises of data collected from various datasets from the UK Office for National Statistics. Each row in the dataset represents a local authority region and contains the following variables:
+
+Variable | Description
+------------- | -------------
+area_name| Name of the specific local authority region.
+area_code| A distinctive identifier assigned to each local authority region.
+Population| The total count of people living in the local authority region.
+Poverty| The percentage of residents in the region identified as living in poverty.
+CVD| The share of the population recently affected by Cardiovascular Disease
+overweight| The percentage of residents categorized as overweight.
+smokers| The proportion of individuals in the region who are smokers.
+wellbeing| The average wellbeing rating of the residents in the region.
+
+---
+
+### *Load Libraries*
+
+```{r setup, message=FALSE, warning=FALSE}
+
+# Load necessary libraries
+library(tidyverse)  # For data manipulation and visualization
+library(kableExtra) # For creating and customizing tables
+library(ggplot2) # For creating graphics and visualizations
+library(patchwork)  # For combining plots into a grid
+library(car)        # For Anova tests and multicollinearity diagnostics
+library(interactions) # For visualizing interaction effects
+library(knitr) # For better table output
+library(broom) # For tidying statistical outputs
+library(gridExtra) #For arranging multiple plots in a grid layout
+library(emmeans) # Load the emmeans library to compute estimated marginal means (EMMs)
+library(grid) # For creating custom plots, controlling graphical elements, and arranging complex layouts.
+options(width=100)  # Set console output width
+
+```
+
+---
+
+### *Read Dataset*
+
+```{r}
+
+ #1. Read the cardio vascular disease dataset (Cardio_Vascular_Disease.csv)
+cardio_vasc <- read_csv("Cardio_Vascular_Disease.csv")
+
+#2. Display the first five rows of the dataset for an overview
+head(cardio_vasc)
+
+```
+
+### *Data Integrity*
+
+```{r}
+
+#1. Display the structure of the 'cardio_vasc' dataset
+# This will show the data type, number of observations, variable names, and a preview of the data.
+str(cardio_vasc)
+
+#2. Display a summary of the 'cardio_vasc' dataset
+# This provides statistics (e.g., mean, median, min, max) for each variable in the dataset.
+summary(cardio_vasc)
+
+#3. Standardize column names
+# Convert all column names to lowercase to ensure consistency.
+colnames(cardio_vasc) <- tolower(colnames(cardio_vasc))
+
+# View the modified dataset with updated column names
+print(cardio_vasc)
+
+#4. Format character columns
+# Ensure that character columns are properly formatted by removing leading/trailing whitespaces.
+character_columns <- names(cardio_vasc)[sapply(cardio_vasc, is.character)]
+cardio_vasc[character_columns] <- lapply(cardio_vasc[character_columns], trimws)
+
+#5. Check unique Values in the character columns
+# Identify unique values in character columns like 'area_name' and 'area_code' to ensure data integrity.
+unique(cardio_vasc[character_columns])
+
+#6. Format numeric columns
+# Convert specified numeric columns to the correct numeric format.
+numeric_columns <- c("population", "poverty", "cvd", "overweight", "smokers", "wellbeing")
+cardio_vasc[numeric_columns] <- lapply(cardio_vasc[numeric_columns], as.numeric)
+
+#7. Verify logical consistency of numeric columns
+# Check if numeric columns like 'poverty', 'cvd', etc, fall within valid ranges (0-100 for percentages).
+columns_to_check <- c("poverty", "cvd", "overweight", "smokers")
+cardio_vasc <- cardio_vasc[apply(cardio_vasc[, columns_to_check], 1, function(row) all(row >= 0 & row <= 100, na.rm = TRUE)), ]
+
+```
+
+### *Data Cleaning*
+
+```{r}
+
+#1. Identify duplicate rows
+# This step checks for duplicate rows in the dataset by identifying duplicates from both the front and the back.
+duplicates <- cardio_vasc %>% filter(duplicated(.) | duplicated(., fromLast = TRUE))
+
+# Display any duplicate rows if found.
+print(duplicates)
+
+#2. Round numeric columns  
+# Round specific numeric columns to two decimal places for precision and readability  
+cardio_vasc[, numeric_columns] <- lapply(cardio_vasc[, numeric_columns], round, 2)
+
+# Print the updated data frame to review changes  
+print(cardio_vasc)
+
+#3. Check for missing values (NA)
+# Counts the number of missing (NA) values in each column of the dataset.
+missing_count <- colSums(is.na(cardio_vasc))
+
+# Display the count of missing values for each column.
+print(missing_count)
+
+# Calculate the total missing values in the entire dataset.
+print(sum(is.na(cardio_vasc)))
+
+#4. Calculate the percentage of missing values for each column in order to calculate the impact
+missing_values_percentages <-  cardio_vasc %>%
+  summarise(across(everything(), ~sum(is.na(.)) / n()*100)) %>%
+  pivot_longer(everything(), names_to = "column", values_to = "Missing_Percentage")
+print(missing_values_percentages)
+```
+
+**Interpretation** :The table shows high missing rates in **population, poverty, and cvd (19.74%) and overweight (18.70%), likely due to gaps in data collection or reporting, this could weaken the reliability of insights**. 
+
+In contrast, **wellbeing (3.90%) and smokers (1.82%) have minimal missing values, reflecting better data consistency**. **Addressing these gaps is essential to reduce bias and ensure meaningful analysis of socioeconomic and health factors.**
+
+```{r}
+
+#5. Drop rows with missing values present in numeric columns
+# This step removes rows where columns such as cvd, population, smokers, overweight, and others have missing values.
+cleaned_cardio_vasc_data <- na.omit(cardio_vasc[, c("cvd", "population", "overweight", "poverty", "wellbeing", "smokers")])
+
+# Display the cleaned dataset after removing rows with missing values.
+print(cleaned_cardio_vasc_data)
+```
+
+**Interpretation of the removal of missing values**: The dataset has a total of **322 missing values**, with **population**, **poverty**, and **CVD** missing **19.74%**, and **overweight** **18.70%**. **These percentages are well above the commonly accepted threshold for imputation** (**<10%**), which **increases the likelihood** of **bias** or **distorted results**. 
+
+Moreover, the possibility of **non-random missing values further complicates the assumptions needed for reliable imputation**. **Eliminating these missing values**, though it reduces the **sample size**, ensures the **analysis stays accurate** and maintains the **validity** of relationships between **socioeconomic** and **health factors**.
+
+
+```{r}
+#6. Visualize distributions of numeric columns("cvd", "overweight", "poverty", "wellbeing", "smokers", "population")
+# This step generates histograms for columns of interest to visually inspect their distribution and density.
+
+# Define the columns to plot
+columns <- c("cvd", "overweight", "poverty", "wellbeing", "smokers", "population")
+
+# Set up a 2x3 grid layout for the histograms
+# Adjust outer margins to make space for the title
+par(mfrow = c(2, 3), 
+oma = c(0, 0, 5, 0), 
+mar = c(4, 4, 2, 1))  # Adjust margins for better readability
+
+# Loop through the specified columns and generate histograms with density curves
+for (col in columns) {
+  # Extract the data for the current column
+  column_data <- cleaned_cardio_vasc_data[[col]]
+  
+  # Calculate the density for the column data
+  density_data <- density(column_data)
+  
+  # Plot the histogram and adjust the y-axis limit
+  hist(column_data, probability = TRUE, col = "lightblue",
+       main = paste("Histogram of", col),
+       xlab = col,
+       ylim = c(0, max(density_data$y) * 1.1))  # Add 10% padding to the density peak
+  
+  # Add the density curve to the histogram
+  lines(density_data, col = "darkblue", lwd = 2)
+  
+  # Add a vertical line to indicate the mean of the data
+  abline(v = mean(column_data), col = "red", lwd = 2, lty = 2)
+  
+  mtext("Figure 1. Distribution and Density of Key Variables: CVD, Poverty, Wellbeing, Overweight, and Smokers", 
+      side = 3, outer = TRUE, line = 2, cex = 0.80, font = 2)
+}
+```
+
+**Interpretation**: In Figure 1, the histograms with density plots for the **numeric columns**—**CVD prevalence**, **wellbeing**, **poverty**, **overweight**, **smokers**, and **population**—show patterns that are **nearly normal**, with **symmetrical, bell-shaped curves**. 
+
+This suggests the data is **well-distributed** and meets the **assumptions of normality**, making it suitable for using **parametric statistical methods** to explore relationships between these variables effectively.
+
+
+```{r}
+#7. Detect and review outliers
+
+# Adjust layout for a grid of two rows and three columns
+par(mfrow = c(2, 3),            # Set the layout for 2 rows and 3 columns of plots
+    mar = c(4, 4, 2, 1),        # Set the margins for individual plots (bottom, left, top, right)
+    oma = c(0, 0, 5, 0))        # Set the outer margins for the entire plot grid (for the title)
+
+# Specify the columns to generate boxplots for
+selected_columns <- c("cvd", "overweight", "poverty", "wellbeing", "smokers")
+
+# Define custom y-axis labels for each of the selected columns
+y_labels <- c(
+  "overweight" = "Overweight Proportion",   # Label for the 'overweight' column
+  "poverty" = "Poverty Proportion",         # Label for the 'poverty' column
+  "wellbeing" = "Wellbeing Score",          # Label for the 'wellbeing' column
+  "smokers" = "Smokers Proportion",         # Label for the 'smokers' column
+  "cvd" = "CVD Proportion"                  # Label for the 'cvd' column
+)
+
+# Loop through each selected column to generate individual boxplots
+for (col in selected_columns) {
+  # Generate a boxplot for the current column
+  boxplot(cleaned_cardio_vasc_data[[col]], 
+          main = paste("Boxplot of", col),  # Add a title for each boxplot
+          col = "lightblue",               # Set the box color to light blue
+          xlab = "",                       # Suppress the x-axis label
+          ylab = y_labels[[col]],          # Use the custom y-axis label
+          xaxt = "n",                 # Suppress the x-axis ticks and labels
+          outpch = 20,                     # Use solid circles for outliers
+          outcex = 1,                      # Set the size of the outliers
+          outcol = "black"                 # Set the color of outliers to black
+  )
+}
+
+# Add a main title for the entire grid of plots
+mtext("Figure 2. Boxplot Visualization of Outliers in Poverty, Wellbeing, and Smoking Rates", 
+      side = 3,           # Position the title on the top side
+      outer = TRUE,       # Place the title in the outer margin
+      line = 2,           # Adjust the line position of the title
+      cex = 0.80, font = 2)  # Set the size of the title text
+```
+
+**Interpretation of outliers**: In **Figure 2**, the boxplots reveal **6 outliers in Poverty**, **10 in wellbeing**, and **8 in smokers**, which likely reflect **real-world regional disparities** rather than errors. 
+
+These outliers represent areas with **exceptionally high or low socioeconomic or health measures**, and **removing them could obscure valuable insights.** The **population variable** wasn’t included in the boxplot as it’s not directly relevant to this analysis. 
+
+**Retaining these outliers ensures the analysis accounts** for the **full range of variations**, providing a more **accurate and meaningful understanding** of the data.
+
+
+
+### **Statistical Analysis**
+
+### *Correlation Analysis*
+```{r}
+
+# Define the continuous numeric columns to analyze
+numeric_columns <- c("cvd", "overweight", "smokers", "wellbeing", "poverty")
+
+# Compute and display the Pearson correlation matrix
+pearson_corr_matrix <- cor(cleaned_cardio_vasc_data[, numeric_columns], method = "pearson", use = "complete.obs")
+print("Pearson Correlation Coefficients:")
+print(pearson_corr_matrix)
+
+```
+
+**Interpretation:** The analysis reveals several key correlations related to **CVD prevalence**:
+
+- **CVD and Overweight (r = 0.319)**: There’s a noticeable connection between **overweight** rates and **CVD** cases. This makes sense because we know that carrying extra weight can lead to heart problems, mainly through things like **high blood pressure** and **cholesterol issues**.
+
+- **CVD and Smoking (r = 0.178)**: The link between **smoking** and **CVD** is weaker here, which could mean that while smoking is a risk factor, other factors, like **healthcare access** or other lifestyle habits, might play a bigger role in this case.
+
+- **CVD and Wellbeing (r = 0.246)**: It’s interesting that areas with higher **wellbeing** scores also tend to report more **CVD** cases. This might be because these regions have better **healthcare** systems, so people are more likely to get diagnosed and reported for heart disease.
+
+- **CVD and Poverty (r = -0.248)**: There’s a surprising trend where **CVD** rates seem lower in poorer areas. This could be due to **under-reporting** or lack of access to proper healthcare, rather than poverty itself protecting against heart disease.
+
+- **Poverty and Wellbeing (r = -0.345)**: A strong link shows that higher **poverty** levels are tied to lower **wellbeing**. This is a reminder of how financial struggles can affect both **mental** and **physical health**, making it harder for people in low-income areas to stay healthy.
+
+### *Linear Regression: CVD vs Poverty*
+
+``` {r}
+
+# Fit the linear regression model
+# This model predicts cardiovascular disease (CVD) prevalence based on poverty percentage.
+lm.cvd.by.poverty <- lm(cvd ~ poverty, data = cleaned_cardio_vasc_data)
+
+# Display a summary of the regression model
+# The summary includes coefficients, R-squared value, p-values, and more.
+summary(lm.cvd.by.poverty)
+
+# Create a scatter plot with a regression line
+plot_poverty <- ggplot(cleaned_cardio_vasc_data, aes(x = poverty, y = cvd)) +
+  # Add points to represent data, with blue color and some transparency
+  geom_point(color = "blue", alpha = 0.6) +
+  # Add a linear regression line with confidence interval shaded
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  # Add labels for the plot, x-axis, and y-axis
+  labs(title = "Figure 3. Impact of Poverty on CVD",
+       x = "Poverty (%)",
+       y = "CVD Prevalence (%)") +
+  # Apply a minimalistic theme for a clean look
+  theme_minimal() +
+theme(
+    plot.title = element_text(hjust = 0.5, size = 11, face = "bold")) # Center-align title
+
+# Print the plot to visualize the relationship
+print(plot_poverty)
+```
+
+**Interpretation:** 
+
+The analysis reveals a **statistically significant negative relationship** between **poverty** and **CVD prevalence**. For every **1% increase in poverty**, **CVD prevalence decreases** by **0.15%** (**t(301) = -4.44, p < 0.0001**), indicating a reliable inverse association.
+
+The **downward-sloping regression line** in **Figure 3**, along with the confidence interval, supports this trend, though with moderate variability.
+
+This relationship may be due to factors such as **under-diagnosis**, **limited healthcare access**, or **demographic differences** in poorer areas, where cardiovascular diseases may not be accurately reported or diagnosed.
+
+
+### *Linear Regression: CVD vs Wellbeing*
+
+```{r}
+
+# Fit the linear regression model
+# This model predicts cardiovascular disease (CVD) prevalence based on wellbeing scores.
+lm.cvd.by.wellbeing <- lm(cvd ~ wellbeing, data = cleaned_cardio_vasc_data)
+
+# Display a summary of the regression model
+# The summary includes regression coefficients, p-values, R-squared, and diagnostic statistics.
+summary(lm.cvd.by.wellbeing)
+
+# Create a scatter plot with a regression line
+plot_wellbeing <- ggplot(cleaned_cardio_vasc_data, aes(x = wellbeing, y = cvd))  +
+  # Add points to represent data, with blue color and some transparency
+  geom_point(color = "blue", alpha = 0.6) +
+  # Add a linear regression line with confidence interval shaded
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  # Add labels for the plot, x-axis, and y-axis
+  labs(title = "Figure 4. Impact of Wellbeing on CVD",
+       x = "Wellbeing Score",
+       y = "CVD Prevalence (%)") +
+  # Apply a minimalistic theme for a clean look
+  theme_minimal() +
+theme(
+    plot.title = element_text(hjust = 0.5, size = 11, face = "bold")) # Center-align title
+
+# Print the plot to visualize the relationship
+print(plot_wellbeing)
+```
+
+**Interpretation:**
+
+The analysis shows a **statistically significant positive relationship** between **wellbeing scores** and **CVD prevalence**. For every **1 unit increase in wellbeing scores**, CVD prevalence rises by **2.24%** (**t(301) = 4.39, p < 0.0001**), indicating a reliable connection.
+
+The **upward-sloping regression line** in **Figure 4** and the narrow **confidence interval** confirm the consistency of this trend.
+
+This relationship could reflect **socioeconomic dynamics** or differences in **healthcare access**, where areas with higher wellbeing scores might also have more **CVD diagnoses** due to better healthcare infrastructure or more accurate reporting.
+
+
+### *Linear Regression: CVD vs Smokers*
+
+```{r}
+
+# Fit the linear regression model
+# This model predicts cardiovascular disease (CVD) prevalence based on the percentage of smokers.
+lm.cvd.by.smokers <- lm(cvd ~ smokers, data = cleaned_cardio_vasc_data)
+
+# Display a summary of the regression model
+# The summary provides regression coefficients, R-squared, p-values, and other diagnostics.
+summary(lm.cvd.by.smokers)
+
+# Create a scatter plot with a regression line
+plot_smokers <- ggplot(cleaned_cardio_vasc_data, aes(x = smokers, y = cvd))  +
+  # Add points to represent data, with blue color and some transparency
+  geom_point(color = "blue", alpha = 0.6) +
+  # Add a linear regression line with confidence interval shaded
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  # Add labels for the plot, x-axis, and y-axis
+  labs(title = "Figure 5. Impact of Smokers on CVD",
+       x = "Smokers (%)",
+       y = "CVD Prevalence (%)") +
+  # Apply a minimalistic theme for a clean look
+  theme_minimal() +
+theme(
+    plot.title = element_text(hjust = 0.5, size = 11, face = "bold")) # Center-align title
+
+# Print the plot to visualize the relationship
+print(plot_smokers)
+```
+
+**Interpretation:** 
+
+The analysis shows a **statistically significant positive relationship** between **smoking** and **CVD prevalence**. For every **1% increase in smoking rates**, CVD prevalence rises by **0.10%** (**t(301) = 3.14, p = 0.0019**), confirming a strong and reliable connection.
+  
+The **upward-sloping regression line** in **Figure 5** supports this relationship, with a narrow **confidence interval** highlighting the consistency of the trend.
+
+Smoking is a well-established cause of **cardiovascular disease**, contributing to **blood vessel damage**, **inflammation**, and **plaque buildup**, all of which significantly harm heart health.
+
+
+### *Linear Regression: CVD vs Overweight*
+
+```{r}
+
+# Fit the linear regression model
+# This model predicts cardiovascular disease (CVD) prevalence based on the percentage of overweight individuals.
+lm.cvd.by.overweight <- lm(cvd ~ overweight, data = cleaned_cardio_vasc_data)
+
+# Display a summary of the regression model
+# The summary provides details about the regression coefficients, R-squared value, p-values, and other statistics.
+summary(lm.cvd.by.overweight)
+
+# Create a scatter plot with a regression line
+plot_overweight <- ggplot(cleaned_cardio_vasc_data, aes(x = overweight, y = cvd)) +
+  # Add points to represent data, with blue color and some transparency
+  geom_point(color = "blue", alpha = 0.6) +
+  # Add a linear regression line with confidence interval shaded
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  # Add labels for the plot, x-axis, and y-axis
+  labs(title = "Figure 6. Impact of Overweight on CVD",
+       x = "Overweight(%)",
+       y = "CVD Prevalence (%)") +
+  # Apply a minimalistic theme for a clean look
+  theme_minimal() +
+theme(
+    plot.title = element_text(hjust = 0.5, size = 11, face = "bold")) # Center-align title
+
+# Print the plot to visualize the relationship
+print(plot_overweight)
+
+```
+
+**Interpretation:** 
+
+The analysis shows that for every 1% increase in overweight individuals, **CVD prevalence** rises by 0.12% (t(301) = 5.84, p < 0.001), indicating a strong and reliable connection.
+
+**Figure 6** clearly shows this trend with an upward-sloping line and a tight **confidence interval**, which reinforces the consistency of the results.
+
+Being **overweight** is a major risk factor for **CVD**, contributing to issues like **high blood pressure**, **cholesterol imbalances**, and **inflammation**, all of which are directly linked to heart disease.
+
+
+### *All Linear Regressions*
+
+```{r}
+title <- textGrob(
+  "Figure 7. Factors Influencing CVD Prevalence", 
+  gp = gpar(fontsize = 11, fontface = "bold")
+)
+
+# Arrange the plots using grid.arrange
+grid.arrange(
+  title, 
+  arrangeGrob(plot_poverty,plot_wellbeing, plot_smokers, plot_overweight, ncol = 2),  # Arrange individual plots in a grid
+  nrow = 2, heights = c(0.1,1)          # Adjust height to fit the title
+)
+
+```
+
+**Interpretation:** **Figure 7** looks at how **CVD prevalence** is affected by four key factors: **poverty**, **overweight**, **smoking**, and **wellbeing**.
+
+- **Poverty** shows a surprising **negative relationship** with **CVD**, meaning that in areas with higher poverty, CVD rates are lower. This might be influenced by factors like **healthcare access** or **lifestyle differences** that we can’t fully capture in the data.
+- Both **overweight** and **smoking** have a **positive relationship** with **CVD**, which is expected. Being overweight or smoking increases the risk of conditions like **hypertension** and **diabetes**, which are major contributors to **CVD**.
+- **Wellbeing** also shows a positive relationship with **CVD**, which is unexpected. This could be because people living with CVD might report feeling better overall, or it could reflect other factors like **health awareness** in certain groups.
+
+In conclusion, while **overweight** and **smoking** are clear contributors to **CVD**, the roles of **poverty** and **wellbeing** are more complex and need further exploration to fully understand their impact.
+
+
+### *Multiple Linear Regression*
+
+```{r}
+# Fit a multiple regression model
+# This model predicts CVD prevalence based on multiple predictors: overweight, smokers, wellbeing, and poverty.
+multiple_regress_model <- lm(cvd ~ overweight + smokers + wellbeing + poverty, data = cleaned_cardio_vasc_data)
+
+# Display the regression summary
+# Provides coefficients for each predictor, p-values, R-squared, and overall model significance.
+summary(multiple_regress_model)
+```
+
+**Interpretation:** The **multiple regression analysis** reveals some interesting and important findings about the factors affecting **CVD prevalence**:
+
+- **Overweight** is a significant contributor to CVD, increasing its prevalence by **0.11 units** for every unit increase (**t(301) = 5.17, p < 0.001**). This aligns with what we know about the role of obesity in cardiovascular diseases, such as high blood pressure and inflammation.
+
+- **Smoking** also has a clear impact, raising CVD prevalence by **0.12 units** per unit increase (**t(301) = 3.57, p < 0.001**). This confirms smoking’s well-documented role as a major risk factor for heart disease.
+
+- The most surprising result comes from **wellbeing**, which increases CVD prevalence by **1.80 units** for each unit increase (**t(301) = 3.67, p < 0.001**). This suggests that areas with better wellbeing may have better healthcare access or more accurate reporting, leading to higher diagnosed cases of CVD.
+
+- **Poverty** shows a negative relationship with CVD, decreasing its prevalence by **0.18 units** per unit increase (**t(301) = -5.23, p < 0.001**). This could be due to underreporting or limited healthcare access in poorer areas, where CVD might go undiagnosed or unreported.
+
+In summary, while **overweight** and **smoking** clearly contribute to **CVD prevalence**, the role of **wellbeing** and **poverty** shows that the relationship is more complex, influenced by factors like healthcare access, reporting practices, and regional disparities.
+
+### *Null Hypothesis Significant Testing: Multiple Regression Model Coefficients*
+
+```{r}
+
+# Display the summary of the multiple regression model
+# Provides coefficients, p-values, and R-squared to evaluate the significance and impact of each predictor.
+summary(multiple_regress_model)
+```
+
+**Interpretation:** The NHST results reveal that all predictors significantly influence CVD prevalence: 
+
+**Overweight** and **smoking both show small but reliable positive associations, with increases in each leading to higher CVD prevalence (0.11 and 0.12 increases, respectively, p < 0.001)**. 
+
+**Wellbeing has the strongest positive impact**, with a **1.80 increase** in CVD prevalence for every unit increase (**p < 0.001**). 
+
+Interestingly, **poverty shows a negative relationship**, with a **0.18 decrease** in CVD prevalence for every unit increase (**p < 0.001**), suggesting a complex or regional influence. 
+
+These findings confirm the significant and unique contributions of each factor to CVD prevalence.
+
+### *Estimation Approach: Multiple Regression Model Coefficients*
+
+```{r}
+
+# Extract coefficients and confidence intervals
+estimation_results <- tidy(multiple_regress_model, conf.int = TRUE)
+
+# Rename columns for clarity
+colnames(estimation_results) <- c("Predictor", "Coefficient", "Std.Error", "Statistic", "P-value", "95% CI Lower", "95% CI Upper")
+
+# Select relevant columns for display
+estimation_results <- estimation_results[, c("Predictor", "Coefficient", "95% CI Lower", "95% CI Upper")]
+
+kable_table <- estimation_results %>%
+  kable("html", digits = 3, col.names = c("Variable", "Estimate", "Lower 95% CI", "Upper 95% CI"), caption = "<span style='font-size:12px; font-weight:bold; color:black';>Figure 8. Coefficients and 95% Confidence Intervals</span>") %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = FALSE,
+    font_size = 12, 
+    position = "center",
+    latex_options = "HOLD_position"
+  ) %>%
+  column_spec(1, bold = TRUE) %>% # Make the first column bold
+  row_spec(0, bold = TRUE, background = "#D3D3D3") # Bold header row with background color
+
+# Display the table
+kable_table
+
+```
+
+**Interpretation:** Figure 8 shows that all predictors are statistically significant, with confidence intervals excluding zero. 
+
+**Wellbeing has the largest positive effect** (**Estimate = 1.800, 95% CI = [0.834, 2.766]**), **indicating a strong increase in the outcome for each unit increase.** 
+
+**Poverty negatively affects the outcome** (**Estimate = -0.184, 95% CI = [-0.253, -0.115]**), while **overweight** (**Estimate = 0.110**) and **smokers (Estimate = 0.120) show smaller positive effects**, suggesting modest increases in the dependent variable.
+
+
+### *Variance Inflation Factor (VIF): Detecting Multicollinearity*
+
+```{r}
+
+# Calculate Variance Inflation Factor (VIF) for the predictors in the multiple regression model
+vif_values <- vif(multiple_regress_model)
+
+# Display the VIF values for each predictor
+cat("Variance Inflation Factor (VIF) for CVD Predictors:\n")
+print(vif_values)
+```
+
+**Interpretation:** The **Variance Inflation Factor (VIF)** indicates minimal multicollinearity in this dataset. With VIF values of **overweight = 1.20, smokers = 1.36, wellbeing = 1.15, poverty = 1.26**, all are close to **1**, **meaning the predictors are largely independent and provide unique insights into the outcome variable.**
+
+**No corrective actions are needed.**
+
+**Interpretation thresholds**:  
+- **VIF > 10**: High multicollinearity, corrective actions needed.  
+- **VIF > 5**: Moderate multicollinearity, evaluate carefully.  
+- **VIF close to 1**: Minimal multicollinearity, predictors are independent.
+
+
+### *Estimated Marginal Means (EMMs) for Factors*
+
+```{r}
+
+ # Compute estimated marginal means (EMMs) for the specified factors in the model
+model_emmeans <- emmeans(multiple_regress_model, ~overweight + poverty + smokers + wellbeing)
+
+# Print the estimated marginal means result
+print(model_emmeans)
+
+```
+
+**Interpretation**: The **Estimated Marginal Means (EMMs)** show that with specific factor levels (**overweight = 25.5, poverty = 19.4, smokers = 12.9, wellbeing = 7.42**), the average predicted outcome is **12.4**. The **small standard error (0.109)** indicates precision, and the **95% confidence interval ([12.2, 12.7])** suggests the true average lies within this range. 
+
+These values reflect how the model predicts outcomes based on these factors, though they show an **association**, **not causation**, and depend on the model's accuracy.
+
+
+### *Effect of Poverty on Cardio Vascular Disease (CVD)*
+
+```{r}
+
+# Fit the linear regression model
+# This model predicts cardiovascular disease (CVD) prevalence based on poverty percentage.
+lm.cvd.by.poverty <- lm(cvd ~ poverty, data = cleaned_cardio_vasc_data)
+
+# Create a scatter plot with a regression line
+plot_poverty <- ggplot(cleaned_cardio_vasc_data, aes(x = poverty, y = cvd)) +
+  # Add points to represent data, with blue color and some transparency
+  geom_point(color = "blue", alpha = 0.6) +
+  # Add a linear regression line with confidence interval shaded
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  # Add labels for the plot, x-axis, and y-axis
+  labs(title = "Figure 3. Effect of Poverty on Cardio Vascular Disease (CVD)",
+       x = "Poverty (%)",
+       y = "CVD Prevalence (%)") +
+  # Apply a minimalistic theme for a clean look
+  theme_minimal() +
+theme(
+    plot.title = element_text(hjust = 0.5, size = 12, face = "bold")) # Center-align title
+
+# Print the plot to visualize the relationship
+print(plot_poverty)
+```
+
+**Interpretation**: In **Figure 3**, the scatterplot with a fitted regression line shows a **negative relationship** between **poverty** and **CVD prevalence**. In simple terms, areas with higher **poverty levels** tend to have slightly lower rates of **CVD**, as seen in the downward slope of the red line. The shaded **confidence interval** shows some variation, but the overall trend is clear.
+
+This might seem surprising since **poverty** is usually linked to worse health outcomes. However, it could reflect **regional differences** or other **socioeconomic factors** not captured here. The data points cluster near the line, indicating a **moderate fit**, but more variability at higher poverty levels suggests other factors may be at play.
+
+Statistically, this relationship is **significant (p < 0.001)**, meaning it's unlikely due to chance. For every **1% increase in poverty**, **CVD prevalence** decreases by about **0.1546%**. The **confidence interval** (-0.253 to -0.115) supports this effect. However, **poverty** explains only a small portion of the variation in CVD prevalence (**6.2%, R² = 0.06155**), suggesting that other factors need to be explored to fully understand the pattern.
+
+
+### *Conclusions*
+
+Our analysis focused on identifying the key factors that influence **CVD prevalence** in a given area, specifically looking at **overweight**, **smoking**, **wellbeing**, and **poverty**.
+
+The analysis shows that **overweight** and **smoking** are major factors contributing to **CVD prevalence**, with every 1% increase in these behaviors leading to a 0.12% and 0.10% rise in CVD rates, respectively (p < 0.001). This strengthens the well-known link between **overweight, smoking**, and **heart disease**, showing how they contribute to issues like **high blood pressure**, **cholesterol imbalances**, and **inflammation**, all of which harm cardiovascular health.
+
+At the same time, the relationships with **wellbeing** and **poverty** are more complicated. Surprisingly, areas with higher **wellbeing** scores tend to have higher CVD rates, which could be due to factors like **socioeconomic status**, **healthcare access**, or even **reporting biases**. On the other hand, **poverty** seems to lower CVD rates, likely because of **under-reporting** or limited healthcare in poorer areas, where heart disease may not be diagnosed or reported accurately.
+
+In summary, while **overweight** and **smoking** are the biggest contributors to CVD, the unexpected roles of **wellbeing** and **poverty** show how complex cardiovascular health is. To tackle CVD effectively, we need to address both **lifestyle factors** and the **socioeconomic challenges** that impact health.
+
+
+---
+
+## Question 2 - Customer Satisfaction
+
+---
+
+### *Project Overview*
+
+---
+
+This analysis aims to examine the factors influencing customer satisfaction within a furniture retail company. The variables under consideration include delivery times, staff job satisfaction, the presence of a new product range, and the socio-economic status (SES) of the store locations. The primary focus is on evaluating the impact of delivery times on customer satisfaction, with particular attention given to whether this effect varies across stores situated in low, medium, and high SES areas by performing the following specific analyses:
+
+1. Provide a data integrity check of the dataset.
+2. Provide a data quality check of the dataset.
+3. Perform correlation of the dependent variable (`customer_satisfaction`) with each independent variable (`ses_category`, `staff_satisfaction`, `delivery_time`, and `new_range`).
+4. Perform multiple linear regression for all independent variables (`ses_category`, `staff_satisfaction`, `delivery_time`, and `new_range`) against the dependent variable (`customer_satisfaction`).
+5. Fit an interaction model to examine how (`delivery_time`) and (`ses_category`) interact in predicting (`customer_satisfaction`).
+6. Perform NHST (Null Hypothesis Significance Testing) for the regression coefficients of the interaction model.
+7. Perform the estimation approach for the interaction model.
+8. Calculate the Variance Inflation Factor (VIF) to check for multicollinearity.
+9. Perform multicollinearity correction on the predictors using the mean difference method.
+10. Perform Null Hypothesis Significance Testing (NHST) on the corrected interaction regression coefficients.
+11. Apply the estimation approach to the corrected interaction regression coefficients.
+12. Perform ANOVA (Analysis of Variance) to assess the overall significance of the interaction model.
+13. Estimate Marginal Means (EMMs) for the interaction terms to assess the adjusted means of (`customer_satisfaction`) across different levels of (`delivery_time`) and (`ses_category`).
+14. Fit the interaction model (`customer_satisfaction ~ delivery_time * ses_category`) to examine how (`delivery_time`) and (`ses_category`) interact to affect customer satisfaction.
+15. Visualize the interaction effect of (`delivery_time`) and (`ses_category`) on `customer_satisfaction`, showing how the effect varies across different SES levels (e.g., high, medium, low).
+
+---
+
+### *Data Dictionary*
+
+This customer satisfaction dataset consists of data collected from a furniture retail company, with each row representing one store. The data includes the following variables:
+
+Variable | Description
+------------- | -------------
+SES_category| The company’s categorization of store type based on local socio-economic status (low, medium, high).
+customer.satisfaction| The average customer satisfaction score for the store.
+staff.satisfaction| The average job satisfaction score of the staff at the store.
+delivery.time| The average delivery time for large and custom items at the store.
+new_range| Indicates whether the store was carrying a new range of products(FALSE = No, TRUE = Yes).
+
+---
+### *Read Dataset*
+
+```{r}
+
+ # Read the customer satisfaction dataset
+cust_sat <- read_csv("cust_satisfaction.csv")
+
+# Display the first five rows of the dataset for an overview
+head(cust_sat)
+```
+
+### *Data Integrity*
+
+```{r}
+# 1. Display dataset structure  
+# Use the 'str()' function to review the structure of the dataset, including:
+# - Number of observations and variables  
+# - Variable names, data types, and a preview of their values  
+str(cust_sat)
+
+# Descriptive statistics for continuous variables
+# This provides statistics (e.g., mean, median, min, max) for each variable in the dataset.
+summary(cust_sat)
+
+# 2. Standardize column names  
+# Ensure consistency in column naming by:  
+# - Replacing periods (".") with underscores ("_")  
+# - Converting all characters to lowercase  
+colnames(cust_sat) <- tolower(gsub("\\.", "_", colnames(cust_sat)))
+
+# Print updated column names for verification  
+print(colnames(cust_sat))
+
+# 4. Format character columns  
+character_columns <- names(cust_sat)[sapply(cust_sat, is.character)]
+print(character_columns) # Displays all character columns in the dataset 
+
+# 5. Format numeric columns
+# Define columns expected to contain numeric data  
+numeric_columns <- c("customer_satisfaction", "staff_satisfaction", "delivery_time")
+
+# Check if specific columns are numeric
+sapply(cust_sat[numeric_columns], is.numeric) #This will return TRUE for columns that are numeric and FALSE for columns that are not.
+
+# 6.Check for unique values in categorical column(ses_category)
+unique(cust_sat$ses_category)
+
+# 7.Validate categorical values in 'ses_category' column  
+# Define the unique values present in 'ses_category' column for valid categories
+# Check if all values in the column belong to the valid categories  
+valid_categories <- c(unique(cust_sat$ses_category))  
+ses_category_is_categorical <- all(cust_sat$ses_category %in% valid_categories)
+
+# Print the result: TRUE if all values are valid, FALSE otherwise  
+print(ses_category_is_categorical)
+
+# 8.Validate the 'new_range' column for boolean values  
+# Ensure that the 'new_range' column contains only boolean values (TRUE or FALSE)  
+new_range_col_valid_values <- all(is.logical(cust_sat$new_range))
+
+# Print the result: TRUE if the column contains only boolean values, FALSE otherwise  
+print(new_range_col_valid_values)
+
+#9. Visualize the normal distribution of the numeric columns (staff_satisfaction, delivery_time, customer_satisfaction)
+
+# Set layout for 3 plots side by side
+par(mfrow = c(1, 3), oma = c(0, 0, 3, 0))  # Add outer margin space for the title
+
+# Histogram and normal curve for customer satisfaction
+hist(cust_sat$customer_satisfaction, 
+     main = "Customer Satisfaction", 
+     col = "lightblue", 
+     xlab = "Customer Satisfaction Score", 
+     probability = TRUE)
+curve(dnorm(x, mean = mean(cust_sat$customer_satisfaction), 
+              sd = sd(cust_sat$customer_satisfaction)), 
+      col = "red", lwd = 2, add = TRUE)
+abline(v = mean(cust_sat$customer_satisfaction), col = "black", lwd = 2, lty = 2)  # Mean line
+
+# Histogram and normal curve for staff satisfaction
+hist(cust_sat$staff_satisfaction, 
+     main = "Staff Satisfaction", 
+     col = "lightblue", 
+     xlab = "Staff Satisfaction Score", 
+     probability = TRUE)
+curve(dnorm(x, mean = mean(cust_sat$staff_satisfaction), 
+              sd = sd(cust_sat$staff_satisfaction)), 
+      col = "red", lwd = 2, add = TRUE)
+abline(v = mean(cust_sat$staff_satisfaction), col = "black", lwd = 2, lty = 2)  # Mean line
+
+# Histogram and normal curve for delivery time
+hist(cust_sat$delivery_time, 
+     main = "Delivery Time", 
+     col = "lightblue", 
+     xlab = "Delivery Time", 
+     probability = TRUE)
+curve(dnorm(x, mean = mean(cust_sat$delivery_time), 
+              sd = sd(cust_sat$delivery_time)), 
+      col = "red", lwd = 2, add = TRUE)
+abline(v = mean(cust_sat$delivery_time), col = "black", lwd = 2, lty = 2)  # Mean line
+
+# Add an overarching title
+mtext("Figure 1. Distributions of Customer Satisfaction, Staff Satisfaction, and Delivery Time", 
+      side = 3, line = 1, outer = TRUE, font = 2, cex = 0.80)
+
+# Reset layout to default
+par(mfrow = c(1, 1))
+
+```
+
+**Interpretation:** Figure 1, shows that **`customer_satisfaction`** and **`staff_satisfaction`** **exhibit minimal skewness, with symmetric density curves centered around the mean, resembling a normal distribution**. 
+
+However, **`delivery_time`** displays **slight positive skewness**, with a **longer right tail caused by a few higher values. While this skewness doesn’t significantly impact interpretation, it highlights variability and occasional delays**. 
+
+Addressing this can reveal **operational inefficiencies without distorting overall trends**.
+
+### *Data Cleaning*
+
+```{r}
+
+#1. Check for missing values  
+# Count the number of missing (NA) values in each column  
+missing_count <- colSums(is.na(cust_sat))
+
+# Print the count of missing values for each column  
+print(missing_count)
+
+#2. Identify duplicate rows  
+# Check for duplicate rows, considering both forward and reverse orders  
+duplicates <- cust_sat %>% filter(duplicated(.) | duplicated(., fromLast = TRUE))
+
+# Display any duplicate rows if found.
+print(duplicates)
+
+#3. Remove leading and trailing whitespaces from character columns  
+cust_sat[character_columns] <- lapply(cust_sat[character_columns], trimws)
+print(cust_sat[character_columns])
+
+#4. Convert categorical column(ses_category) to factor(ses_category_factor)
+
+cust_sat$ses_category_factor<- factor(cust_sat$ses_category,
+                                  levels = c("Low", "Medium", "High"))
+
+print(cust_sat$ses_category_factor)
+
+#5. Convert logical vector(new_range) to numeric(new_range_numeric)
+cust_sat$new_range_numeric <- as.numeric(cust_sat$new_range)
+
+# Verify the update
+print(cust_sat$new_range_numeric)
+
+#6. Round numeric columns  
+# Round specific numeric columns to two decimal places for precision and readability  
+cust_sat[, numeric_columns] <- lapply(cust_sat[, numeric_columns], round, 2)
+
+# Print the updated data frame to review changes  
+print(cust_sat)
+
+#7.Detect and review outliers
+
+# Adjust layout for multiple boxplots
+par(mfrow = c(1, length(numeric_columns)))
+
+par(oma = c(0, 0, 6, 0))  # Allocate enough space for the top margin
+
+# Specify the three columns to generate boxplots for
+selected_columns <- c("customer_satisfaction", "staff_satisfaction", "delivery_time")
+
+# Define custom y-axis labels for each of the selected columns
+y_labels <- c(
+  "customer_satisfaction" = "Customer Satisfaction Score",
+  "staff_satisfaction" = "Staff Satisfaction Score",
+  "delivery_time" = "Time"
+)
+
+# Loop through each selected column and generate a separate boxplot with its own title and y-axis label
+for (col in selected_columns) {
+  # Generate a boxplot for each selected column
+  boxplot(cust_sat[[col]], 
+          main = col,             # Column name as title
+          col = "lightblue",      # Set the color of the box
+          xlab = "",              # Remove the x-axis label
+          ylab = y_labels[[col]], # Custom Y-axis label
+          xaxt = "n"              # Suppress the x-axis
+  )
+}
+
+
+# Add a main title for the entire grid of plots
+mtext("Figure 2. Boxplot Visualization of Outliers in Customer Satisfaction, Staff Satisfaction, and Delivery Time", 
+      outer = TRUE, line = 3, cex = 0.82, font = 2)
+```
+
+**Interpretation:** The boxplots in Figure 2, show **no outliers** for **`customer_satisfaction`** and **`staff_satisfaction`**, indicating **consistent and reliable responses**. 
+
+However, **`delivery_time`** reveals **three outliers** above **90**, reflecting **real-world delays**. These outliers were retained as they indicate a **slight positive skewness** in the data, highlighting **variability** in delivery performance. 
+
+**Removing them would artificially reduce the skewness and distort the true representation of the delivery system’s variability and potential inefficiencies, which are critical for identifying and addressing operational issues.**
+
+
+
+### **Statistical Analysis**
+
+### *Correlation Analysis*
+```{r}
+
+cust_sat$ses_category_numeric = as.numeric(cust_sat$ses_category_factor)
+
+# Define the continuous numeric columns to analyze
+numeric_columns <- c("ses_category_numeric", "customer_satisfaction", "staff_satisfaction", "delivery_time", "new_range_numeric")
+
+# Compute and display the pearson correlation matrix
+pearson_corr_matrix <- cor(cust_sat[, numeric_columns], method = "pearson")
+
+print("Pearson Correlation Coefficients:")
+print(pearson_corr_matrix)
+```
+
+**Interpretation:** The **pearson correlation matrix** reveals key insights:
+
+The analysis highlights the following key findings:
+
+- **Staff satisfaction** and **customer satisfaction** are moderately positively correlated (**r = 0.454**), meaning that when employees are happier, customers tend to be more satisfied as well.
+
+- **Delivery time** shows a weak negative correlation with customer satisfaction (**r = -0.259**), indicating that longer delivery times slightly reduce satisfaction.
+
+- The relationship between **SES category** and customer satisfaction is weakly positive (**r = 0.115**), suggesting a minor connection, but it doesn’t appear to have a strong impact.
+
+- **New range** has negligible correlations with customer satisfaction, meaning it has little effect on customer satisfaction levels.
+
+In summary, **staff satisfaction** is the most important factor influencing **customer satisfaction**, with **delivery time** and **SES category** having a more limited impact.
+
+### *Multiple Linear Regression*
+
+```{r}
+
+# Multiple linear regression model
+# This models the relationship between customer satisfaction and the predictors: staff satisfaction, delivery time, new range, and SES category
+multiple_regression_model <- lm(customer_satisfaction ~ staff_satisfaction + delivery_time + new_range_numeric + ses_category, data = cust_sat)
+
+# Display the summary of the model
+# The summary provides coefficients, p-values, and R-squared to evaluate the model
+model_summary <- summary(multiple_regression_model)
+print(model_summary)
+
+# Visualization: Scatter plot for Customer Satisfaction vs Staff Satisfaction
+# Shows the relationship between staff satisfaction and customer satisfaction with a linear regression line
+ggplot(cust_sat, aes(x = staff_satisfaction, y = customer_satisfaction)) +
+  geom_point(color = "blue", alpha = 0.6) +  # Scatter points
+  geom_smooth(method = "lm", color = "red", se = TRUE) +  # Regression line with confidence interval
+  labs(title = "Figure 3. Effect of Staff Satisfaction On Customer Satisfaction",
+       x = "Staff Satisfaction Score",
+       y = "Customer Satisfaction Score") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 11, face = "bold", hjust = 0.5))  # Bold title
+
+# Visualization: Scatter plot for Customer Satisfaction vs Delivery Time
+# Illustrates the effect of delivery time on customer satisfaction with a linear regression line
+ggplot(cust_sat, aes(x = delivery_time, y = customer_satisfaction)) +
+  geom_point(color = "blue", alpha = 0.6) +  # Scatter points
+  geom_smooth(method = "lm", color = "red", se = TRUE) +  # Regression line with confidence interval
+  labs(title = "Figure 4. Effect of Delivery Time On Customer Satisfaction",
+       x = "Delivery Time",
+       y = "Customer Satisfaction Score") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 11, face = "bold", hjust = 0.5))  # Bold title
+
+# Visualization: Scatter plot with mean points and error bars for SES categories
+# Shows the distribution of customer satisfaction for each SES category with mean points and confidence intervals
+ggplot(cust_sat, aes(x = ses_category_factor, y = customer_satisfaction)) +
+  geom_jitter(color = "blue", alpha = 0.5, width = 0.2) +  # Scatter points with jitter to avoid overlap
+  stat_summary(fun = mean, geom = "point", color = "red", size = 3) +  # Mean points
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar", width = 0.2, color = "red") +  # Error bars for confidence intervals
+  labs(title = "Figure 5. Effect of SES Categories on Customer Satisfaction",
+       x = "SES Category", y = "Customer Satisfaction Score") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 11, face = "bold", hjust = 0.5))  # Bold title
+    
+
+# Visualization: Scatter plot for Customer Satisfaction vs New Range
+# Shows the relationship between new range and customer satisfaction with a linear regression line
+ggplot(cust_sat, aes(x = new_range_numeric, y = customer_satisfaction)) +
+  geom_point(color = "blue", alpha = 0.6) +  # Scatter points
+  geom_smooth(method = "lm", color = "red", se = TRUE) +  # Regression line with confidence interval
+  labs(title = "Figure 6. Effect of New Range On Customer Satisfaction",
+       x = "New Range",
+       y = "Customer Satisfaction Score") +
+  theme_minimal() + 
+  theme(plot.title = element_text(size = 11, face = "bold", hjust = 0.5)) # Bold title
+```
+
+**Interpretation:** The multiple linear regression model provides valuable insights into the drivers of **customer satisfaction**. It reveals that **staff satisfaction** (p = 1.81e-05) is a major factor—happier employees lead to happier customers. On the other hand, **delivery time** (p = 0.000578) has a strong negative effect, with longer waits significantly hurting satisfaction. Customers in **medium SES areas** see a significant boost in satisfaction (1.209, p = 8.55e-15), while those in **low SES areas** show a small negative trend (-0.256, p = 0.065745). Interestingly, **new product ranges** don’t seem to have much impact (p = 0.404286). The model explains **44.7%** of the variation in satisfaction (R-squared = 0.447) and is highly statistically significant (F = 47.51, p < 2.2e-16), proving its robustness.
+
+The visualizations further highlight the key drivers of satisfaction:
+
+**Staff satisfaction** (Figure 3) shows a strong positive correlation with customer satisfaction, emphasizing the connection between happy employees and satisfied customers. **Delivery time** (Figure 4) is a clear pain point, with satisfaction dropping as delays increase, making **operational efficiency** a top priority. The analysis of **SES category** (Figure 5) reveals significant variability, suggesting that satisfaction levels are greatly influenced by socioeconomic status, requiring tailored strategies for different customer groups. Meanwhile, the introduction of a **new product range** (Figure 6) has little impact, as shown by the flat trend line, indicating it’s not a major driver of satisfaction.
+
+In conclusion, the findings suggest that businesses should focus on **staff engagement**, eliminate **delivery inefficiencies**, and create **targeted solutions** for different customer segments to improve satisfaction.
+
+### *Interaction Model*
+
+```{r}
+
+# Multiple linear regression with interaction term
+model_interaction <- lm(customer_satisfaction ~ delivery_time * ses_category_factor, data = cust_sat)
+
+# Summary of the model
+summary(model_interaction)
+
+# Visualization: Interaction plot
+
+# Create individual plots for each SES category
+plot_low <- ggplot(cust_sat %>% filter(ses_category_factor == "Low"),
+                   aes(x = delivery_time, y = customer_satisfaction)) +
+  geom_point(color = "red", alpha = 0.6) +
+  geom_smooth(method = "lm", color = "darkred", se = TRUE) +
+  labs(title = "Low SES Category",
+       x = "Delivery Time",
+       y = "Customer Satisfaction Score") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 9))
+
+plot_medium <- ggplot(cust_sat %>% filter(ses_category_factor == "Medium"),
+                      aes(x = delivery_time, y = customer_satisfaction)) +
+  geom_point(color = "green", alpha = 0.6) +
+  geom_smooth(method = "lm", color = "darkgreen", se = TRUE) +
+  labs(title = "Medium SES Category",
+       x = "Delivery Time",
+       y = "Customer Satisfaction Score") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 9))
+
+plot_high <- ggplot(cust_sat %>% filter(ses_category_factor == "High"),
+                    aes(x = delivery_time, y = customer_satisfaction)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_smooth(method = "lm", color = "darkblue", se = TRUE) +
+  labs(title = "High SES Category",
+       x = "Delivery Time",
+       y = "Customer Satisfaction Score") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5 , size = 9))
+
+# Combine the plots into a grid layout
+(plot_low | plot_medium | plot_high) +
+  plot_annotation(title = "Figure 7. Effect of Delivery Time on Customer Satisfaction Across SES Categories",
+                  theme = theme(plot.title = element_text(face = "bold", hjust = 0.5 , size = 10)))
+```
+
+**Interpretation:** Figure 7 highlights how **delivery time** influences **customer satisfaction** across different **SES groups**.
+
+- **High SES** customers are highly sensitive to delays (**p = 0.018**), meaning they expect faster service for a positive experience.
+- **Medium SES** customers show a moderate, but **non-significant** trend (**p = 0.392**), suggesting that while delivery time affects them, it’s not as impactful.
+- **Low SES** customers seem less concerned with delivery speed, likely prioritizing **affordability** over quick delivery.
+
+With an **adjusted R-squared** of **0.41**, the model indicates that **SES** significantly influences how delivery time impacts satisfaction. This suggests that **high SES** customers need faster delivery, while other groups might value cost or other factors more.
+
+### *Null Hypothesis Significant Testing: Interaction Model Regression Coefficients*
+
+```{r}
+
+# Display the summary of the interaction model
+# Provides coefficients, p-values, and R-squared to evaluate the significance and impact of each predictor.
+summary(model_interaction)
+
+```
+
+**Interpretation:** The interaction model identifies key predictors of **customer satisfaction**. 
+
+**Medium SES** increases satisfaction by **2.41 units** (**p = 0.001**), and **High SES** increases it by **2.12 units** (**p = 0.007**). 
+
+**Delivery time** alone has no significant effect (**p = 0.544**), but its interaction with **High SES** significantly reduces satisfaction by **0.03 units per unit increase** (**p = 0.018**). 
+
+The **interaction with Medium SES** is not significant (**p = 0.392**). The model explains **42%** of the variance in satisfaction (**Adjusted R² = 0.41**).
+
+
+### *Estimation Approach: Interaction Model Regression Coefficients*
+
+```{r}
+
+# Extract coefficients and confidence intervals
+estimation_results <- tidy(model_interaction, conf.int = TRUE)
+
+# Rename columns for clarity
+colnames(estimation_results) <- c("Predictor", "Coefficient", "Std.Error", "Statistic", "P-value", "95% CI Lower", "95% CI Upper")
+
+# Select relevant columns for display
+estimation_results <- estimation_results[, c("Predictor", "Coefficient", "95% CI Lower", "95% CI Upper")]
+
+kable_table <- estimation_results %>%
+  kable("html", digits = 3, col.names = c("Variable", "Estimate", "Lower 95% CI", "Upper 95% CI"), caption = "<span style='font-size:13px;font-weight:bold; color:black';>Figure 8. Coefficients and 95% Confidence Intervals</span>") %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = FALSE,
+    font_size = 12, 
+    position = "center",
+    latex_options = "HOLD_position"
+  ) %>%
+  column_spec(1, bold = TRUE) %>% # Make the first column bold
+  row_spec(0, bold = TRUE, background = "#D3D3D3") # Bold header row with background color
+
+# Display the table
+kable_table
+
+```
+
+**Interpretation:** **Figure 8** reveals that while **`delivery_time`** alone (**-0.005**, **95% CI: [-0.021, 0.011]**) does not significantly affect satisfaction, its **interaction** with **high SES** areas (**-0.030**, **95% CI: [-0.054, -0.005]**) shows that **longer delivery times significantly reduce satisfaction**, reflecting **higher expectations** in these areas. 
+
+Being in **medium SES** (**2.412**, **95% CI: [0.980, 3.843]**) or **high SES** (**2.118**, **95% CI: [0.594, 3.643]**) **increases satisfaction**, highlighting the **greater needs** of these customers. 
+
+These results emphasize the **importance of fast delivery**, especially in **high SES locations**, to meet expectations and avoid dissatisfaction.
+
+### *Variance Inflation Factor (VIF): Detecting Multicollinearity*
+
+```{r}
+
+# Calculate Variance Inflation Factor (VIF) for the predictors in the interaction model
+vif <- vif(model_interaction)
+
+# Display the VIF values for each predictor
+cat("Variance Inflation Factor (VIF) for CVD Predictors:\n")
+print(vif)
+
+```
+
+**Interpretation:** The **VIF** analysis reveals potential **multicollinearity** issues, particularly with the **interaction term** and **`ses_category`**. 
+
+While the **VIF for `delivery_time`** is **1.66**, indicating low multicollinearity, the **VIF for `ses_category_factor`** (**5.38**) and the **interaction term** (**5.35**) **are concerning. These high values suggest a strong correlation between these predictors, which could inflate standard errors and affect model reliability**. 
+
+**Simplifying predictors or reconsidering the interaction term** could help **mitigate these multicollinearity** concerns.
+
+### *Multicollinearity Correction*
+
+```{r}
+#Fixing the multicollinearity using centering
+# Center the 'delivery_time' variable
+cust_sat$center_delivery_time <- cust_sat$delivery_time - mean(cust_sat$delivery_time)
+
+# Perform a regression with the centered variable
+corrected_model <- lm(customer_satisfaction ~ center_delivery_time + ses_category_factor + staff_satisfaction + new_range_numeric, data = cust_sat)
+
+# View the regression summary
+summary(corrected_model)
+
+corrected_vif <- vif(corrected_model)
+
+# Display the VIF values for each predictor
+cat("Corrected Variance Inflation Factor (VIF) for CVD Predictors:\n")
+print(corrected_vif)
+
+```
+
+**Interpretation:** By **centering the `delivery_time`** variable, **multicollinearity** was reduced, with **VIF values** between **1.004 and 1.320**, well below 5. 
+
+The regression shows that **`delivery_time`** significantly impacts customer satisfaction (p = 0.000578), with **faster delivery** improving satisfaction.
+
+**Medium SES** is a major factor (p < 2e-16), and **staff satisfaction** also plays a key role (p = 1.81e-05). The effect of **high SES** is marginally significant (p = 0.0657), while **`new_range_numeric`** has no significant influence (p = 0.404). 
+
+The model addresses multicollinearity and provides **clear, reliable insights**.
+
+### *Null Hypothesis Significance Testing: Corrected Interaction Model Regression Coefficients*
+
+```{r}
+
+summary(corrected_model)
+
+```
+
+**Interpretation:** The corrected model shows that each unit increase in **centered delivery time decreases satisfaction** by **0.017 units** (**p < 0.001**). 
+
+**Medium SES boosts satisfaction by** **1.47 units** (**p < 0.001**), while **High SES** has a marginal effect (**0.26 units**, **p = 0.066**). **`staff_satisfaction` significantly increases satisfaction** by **0.35 units** (**p < 0.001**), but **`new_range_numeric`** has no impact (**p = 0.404**). 
+
+The model explains **44.7%** of satisfaction variance (**Adjusted R² = 0.438**) and has a **highly significant fit** (**F = 47.51, p < 0.001**).
+
+### *Estimation Approach: Corrected Interaction Model Regression Coefficients*
+
+```{r}
+
+# Extract coefficients and confidence intervals
+corrected_estimation_results <- tidy(corrected_model, conf.int = TRUE)
+
+# Rename columns for clarity
+colnames(corrected_estimation_results) <- c("Predictor", "Coefficient", "Std.Error", "Statistic", "P-value", "95% CI Lower", "95% CI Upper")
+
+# Select relevant columns for display
+corrected_estimation_results <- corrected_estimation_results[, c("Predictor", "Coefficient", "95% CI Lower", "95% CI Upper")]
+
+kable_table <- estimation_results %>%
+  kable("html", digits = 3, col.names = c("Variable", "Estimate", "Lower 95% CI", "Upper 95% CI"), caption = "<span style='font-size:13px;font-weight:bold; color:black';>Figure 9. Coefficients and 95% Confidence Intervals</span>") %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = FALSE,
+    font_size = 12, 
+    position = "center",
+    latex_options = "HOLD_position"
+  ) %>%
+  column_spec(1, bold = TRUE) %>% # Make the first column bold
+  row_spec(0, bold = TRUE, background = "#D3D3D3") # Bold header row with background color
+
+# Display the table
+kable_table
+
+```
+
+**Interpretation:** Figure 9 shows that while **delivery time** alone (**-0.005**, 95% CI: **[-0.021, 0.011]**) has no significant effect on satisfaction, its **interaction with high SES** (**-0.030**, 95% CI: **[-0.054, -0.005]**) reveals a strong negative impact, highlighting that **longer delivery times** reduce satisfaction in **high SES areas**. 
+
+**Medium SES** (**2.412**, 95% CI: **[0.980, 3.843]**) and **high SES** (**2.118**, 95% CI: **[0.594, 3.643]**) both significantly increase satisfaction, reflecting higher expectations. 
+
+These findings emphasize the **need for fast delivery**, especially in **high SES locations**.
+
+
+### *Analysis of Variance: Corrected Interaction Model*
+
+```{r}
+
+anova_model <- aov(customer_satisfaction ~ center_delivery_time * ses_category_factor, data = cust_sat)
+
+summary(anova_model)
+
+```
+
+**Interpretation:** The **ANOVA results** reveal that both **delivery time** (**p = 1.45e-08**) and **SES** (**p < 2e-16**) have a **significant impact on customer satisfaction**, with faster delivery leading to higher satisfaction. 
+
+Although the **interaction** between **delivery time** and **SES** is **nearly significant** (**p = 0.0605**), it indicates that the effect of delivery time varies across different SES groups. 
+
+The main takeaway is that improving **delivery times** and addressing **SES disparities** can help boost **customer satisfaction**.
+
+### *Estimated Marginal Means (EMMs) for Interaction Terms*
+
+
+```{r}
+
+# Estimate marginal means for the interaction between delivery_time and ses_category
+emm_results <- emmeans(anova_model, ~ center_delivery_time * ses_category_factor)
+
+# View the estimated marginal means
+summary(emm_results)
+
+```
+
+**Interpretation:** **Medium SES customers** consistently report the **highest satisfaction**, while **Low SES** customers have the **lowest satisfaction scores**. 
+
+**High SES customers** fall in between, highlighting their sensitivity to other factors like delivery delays.
+
+
+### *Interaction Model: Delivery Time and SES Category on Customer Satisfaction Score*
+
+```{r}
+
+interaction_model <- lm(customer_satisfaction ~ staff_satisfaction + center_delivery_time * ses_category_factor + new_range_numeric, data = cust_sat)
+
+summary(interaction_model)
+
+```
+
+**Interpretation:** The model shows that **`staff_satisfaction`** strongly boosts **`customer_satisfaction`** (Estimate: 0.359, p < 0.001). 
+
+**Medium SES customers report significantly higher satisfaction (Estimate: 1.498, p < 0.001)**, while **High SES customers also show a positive effect** (Estimate: 0.290, p = 0.036). 
+
+**`Delivery_time` alone is not significant (p = 0.625), but its interaction with High SES is significant, indicating longer delivery times negatively impact satisfaction for High SES customers** (Estimate: -0.032, p = 0.008). 
+
+This suggests **High SES customers are more sensitive to delays**, while **`staff_satisfaction` universally enhances satisfaction**.
+
+
+### *Visualizing the  effect of delivery times upon customer satisfaction, and whether the effect is the same across high, medium and low ‘Socio-Economic-Status’ (SES) stores.*
+
+```{r}
+
+# Visualize the interaction effect between delivery time and SES category on customer satisfaction
+# Create individual plots for each SES category
+plot_low <- ggplot(subset(cust_sat, ses_category_factor == "Low"), 
+                   aes(x = center_delivery_time, y = customer_satisfaction)) +
+  geom_point(color = "red", alpha = 0.6) +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(title = "Low SES Category",
+       x = "Delivery Time",
+       y = "Customer Satisfaction Score") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 10, face = "bold"))
+
+plot_medium <- ggplot(subset(cust_sat, ses_category_factor == "Medium"), 
+                      aes(x = center_delivery_time, y = customer_satisfaction)) +
+  geom_point(color = "green", alpha = 0.6) +
+  geom_smooth(method = "lm", color = "green", se = TRUE) +
+  labs(title = "Medium SES Category",
+       x = "Delivery Time",
+       y = "Customer Satisfaction Score") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 10, face = "bold"))
+
+plot_high <- ggplot(subset(cust_sat, ses_category_factor == "High"), 
+                    aes(x = center_delivery_time, y = customer_satisfaction)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_smooth(method = "lm", color = "blue", se = TRUE) +
+  labs(title = "High SES Category",
+       x = "Delivery Time",
+       y = "Customer Satisfaction Score") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 10, face = "bold"))
+
+# Arrange the plots in a grid
+plot_grid <- plot_low + plot_medium + plot_high +
+  plot_annotation(title = "Figure 10. Interaction Effect of Delivery Time on Customer Satisfaction Across SES Categories",
+                  theme = theme(plot.title = element_text(size = 11, hjust = 0.5, face = "bold")))
+
+# Display the grid
+print(plot_grid)
+```
+
+**Interpretation**: **Figure 10** illustrates how **delivery time** affects **customer satisfaction** differently across **Low, Medium, and High SES** groups.
+
+In the **Low SES** group, the connection between delivery time and satisfaction is weak, as shown by the nearly flat **red trend line**. This suggests that delivery delays don’t significantly impact satisfaction in this group, although the wide **confidence interval** indicates some variability in responses.
+
+In the **Medium SES** group, the relationship becomes clearer. The **green trend line** shows that longer delivery times lead to a noticeable drop in satisfaction, with a narrower **confidence interval**, indicating that this trend is more consistent.
+
+For the **High SES** group, the impact of delivery time is the strongest. The steep **blue trend line** shows a significant drop in satisfaction as delivery times increase. This group is more sensitive to delays, and the narrow **confidence interval** highlights the consistency of this pattern. 
+
+Overall, the higher the **SES group**, the more strongly **customer satisfaction** is affected by **delivery delays**.
+
+### *Conclusions*
+
+The analysis shows that **delivery time** is a key factor in **customer satisfaction**, with longer delivery times leading to significant drops, especially in **high SES stores**. Customers in these areas expect **fast delivery**, so improving delivery speed is crucial. **Medium SES stores** also see a negative impact, though less severe, while **low SES stores** are affected less, but still experience a decline. This highlights the importance of prioritizing **quick delivery**, particularly in high SES areas.
+
+Another important factor is **staff satisfaction**, which positively influences customer happiness. **Happy employees** create better customer experiences, suggesting that improving employee morale could boost overall satisfaction.
+
+Interestingly, introducing new **product ranges** doesn’t seem to affect customer satisfaction much. This could mean the new products aren’t aligning with customer preferences, so reconsidering **product selection** may be necessary.
+
+In conclusion, **delivery time** and **staff satisfaction** are the most impactful drivers of customer satisfaction. Focusing on **faster delivery**, especially in **high SES areas**, and enhancing **employee engagement** could lead to significant improvements. Meanwhile, **product introductions** may need a new strategy to better meet customer expectations.
